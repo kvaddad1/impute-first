@@ -6,3 +6,11 @@ These scripts were used to generate the call accuracy and window accuracy metric
 - `CMakeLists.txt`: CMake configuration for building the C++ program.
 - `run_analysis.sh`: Script to execute the analysis process.
 - `score_matched_vcf.cpp`: C++ code for scoring VCF files according to accuracy metrics.
+
+Build instructions as follows. 
+```
+        mkdir -p score_matched_vcf/build;
+        cd score_matched_vcf/build;
+        cmake ..;
+        cmake --build
+```

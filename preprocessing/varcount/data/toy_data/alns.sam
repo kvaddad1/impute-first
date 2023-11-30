@@ -1,0 +1,21 @@
+@HD	VN:1.6	SO:unknown
+@SQ	SN:seq_1	LN:30
+@SQ	SN:seq_2	LN:30
+@SQ	SN:seq_3	LN:30
+@SQ	SN:seq_4	LN:30
+@SQ	SN:seq_5	LN:30
+seq_1_ref1	0	seq_1	1	0	8M	*	0	0	TTCGCGGC	*	MD:Z:8
+seq_1_ref2	0	seq_1	3	0	8M	*	0	0	CGCGGCTG	*	MD:Z:8
+seq_1_alt1	0	seq_1	2	0	8M	*	0	0	TCGAGGCT	*	MD:Z:3C4
+seq_2_alt1	0	seq_2	5	0	8M	*	0	0	TGGTGTGC	*	MD:Z:5C2
+seq_2_alt2	0	seq_2	9	0	8M	*	0	0	GTGCTACC	*	MD:Z:1C6
+seq_2_alt3	0	seq_2	3	0	8M	*	0	0	CCTGGTGT	*	MD:Z:7C
+seq_3_ref1	0	seq_3	5	0	8M	*	0	0	CGGTCAAC	*	MD:Z:8
+seq_3_ref2	0	seq_3	2	0	8M	*	0	0	GCTCGGTC	*	MD:Z:8
+seq_3_ref3	0	seq_3	8	0	8M	*	0	0	TCAACTTG	*	MD:Z:8
+seq_3_ref4	0	seq_3	6	0	8M	*	0	0	GGTCAACT	*	MD:Z:8
+seq_4_ref1	0	seq_4	12	0	8M	*	0	0	AGTCGACG	*	MD:Z:8
+seq_4_alt1	0	seq_4	13	0	8M	*	0	0	GTCGACCA	*	MD:Z:6G1
+seq_5_ref1	0	seq_5	13	0	8M	*	0	0	ACTCCGTT	*	MD:Z:8
+seq_5_alt1	0	seq_5	8	0	6M1I1M	*	0	0	TAGTGAGC	*	MD:Z:8
+seq_5_alt2	0	seq_5	10	0	4M1I3M	*	0	0	GTGAGCTC	*	MD:Z:8

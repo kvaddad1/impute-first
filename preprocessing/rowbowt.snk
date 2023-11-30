@@ -1,0 +1,179 @@
+import pysam
+import os
+import random
+
+DIRNAME=config["dirname"]
+parse_exts = [ ".docs", ".ilist", ".bwsai", ".occ",  ".dict", ".n", ".parse" ]
+pfbwt_exts = [ ".bwt", ".ma", ".esa", ".ssa"]
+pfp_sample_prefix = os.path.join(DIRNAME, "pfparse.w{w}.{sample}.{p}")
+pfp_ref_prefix = os.path.join(DIRNAME, "pfparse.w{w}.ref")
+pfp_prefix = os.path.join(DIRNAME, "pfparse.h{h}.w{w}")
+rbwt_prefix = os.path.join(DIRNAME, "rbwt.h{h}.w{w}")
+CONSENSUS_BIN=os.path.join(config["pfbwt_bins"], "consensus")
+PFBWT_BIN=os.path.join(config["pfbwt_bins"], "pfbwt-f64")
+MERGEPFP_BIN=os.path.join(config["pfbwt_bins"], "merge_pfp")
+MERGEMPS_BIN=os.path.join(config["pfbwt_bins"], "merge_mps")
+MPSTOMA_BIN=os.path.join(config["pfbwt_bins"], "mps_to_ma")
+RBBUILD_BIN=os.path.join(config["rowbowt_bins"], "rb_build")
+
+
+def sample_prefixes(w):
+    fname = config["panel_samples"]
+    samples = open(fname).read().strip().split("\n")
+    return expand(pfp_ref_prefix,  w=[w.w]) + expand(pfp_sample_prefix, w=[w.w], sample=samples, p=[0,1])
+
+rule fai:
+    input:
+        "{fasta}.fa"
+    output:
+        "{fasta}.fa.fai"
+    shell:
+        "samtools faidx {input}"
+
+
+rule parse_and_mps:
+    wildcard_constraints:
+        sample=r"\w+\d+"
+    input:
+        fasta=config["fa"],
+        fasta_idx=config["fa"] + ".fai",
+        vcf=config["ref_panel"].replace(".vcf.gz", ".fixed.vcf.gz"),
+        vcf_idx=config["ref_panel"].replace(".vcf.gz.csi", ".fixed.vcf.gz.csi"),
+        consensus=CONSENSUS_BIN,
+        pfbwt=PFBWT_BIN
+    output:
+        docs   =  pfp_sample_prefix + ".docs",
+        ilist  =  pfp_sample_prefix + ".ilist",
+        bwsai  =  pfp_sample_prefix + ".bwsai",
+        occ    =  pfp_sample_prefix + ".occ",
+        dct    =  pfp_sample_prefix + ".dict",
+        n      =  pfp_sample_prefix + ".n",
+        parse  =  pfp_sample_prefix + ".parse",
+        mps    =  pfp_sample_prefix + ".mps"
+    params:
+        prefix=lambda w:os.path.join(DIRNAME, "pfparse.w{w}").format(w=w.w),
+        full_prefix=pfp_sample_prefix,
+        h=lambda w: 1 + int(w.p),
+        sample="{sample}",
+        ma_wsize="{w}",
+        wsize=config['wsize'],
+        mod=config["mod"]
+    benchmark:
+        repeat(pfp_sample_prefix + ".scan.benchmark", config["iters"])
+    log:
+        scan=pfp_sample_prefix + ".scan.log",
+        parse=pfp_sample_prefix + ".parse.log"
+    shell:
+        """
+        {input.consensus} -f {input.fasta} -x {output.mps} -H {params.h} -s {params.sample} -w {params.ma_wsize} -l {params.wsize} {input.vcf} 2>{log.scan} | \
+        {input.pfbwt} -w{params.wsize} -p{params.mod} --non-acgt-to-a --parse-only --print-docs -s -o {params.full_prefix} -m 2>{log.parse}
+        """
+
+
+rule ref_parse_and_mps:
+    input:
+        fasta=config["fa"],
+        fasta_idx=config["fa"] + ".fai",
+        vcf=config["ref_panel"].replace(".vcf.gz", ".fixed.vcf.gz"),
+        vcf_idx=config["ref_panel"].replace(".vcf.gz.csi", ".fixed.vcf.gz.csi"),
+        consensus=CONSENSUS_BIN,
+        pfbwt=PFBWT_BIN
+    output:
+        docs   =  pfp_ref_prefix + ".docs",
+        ilist  =  pfp_ref_prefix + ".ilist",
+        bwsai  =  pfp_ref_prefix + ".bwsai",
+        occ    =  pfp_ref_prefix + ".occ",
+        dct    =  pfp_ref_prefix + ".dict",
+        n      =  pfp_ref_prefix + ".n",
+        parse  =  pfp_ref_prefix + ".parse",
+        mps    =  pfp_ref_prefix + ".mps"
+    params:
+        prefix=lambda w:os.path.join(DIRNAME, "pfparse.w{w}").format(w=w.w),
+        full_prefix=pfp_ref_prefix,
+        ma_wsize="{w}",
+        wsize=config['wsize'],
+        mod=config["mod"]
+    benchmark:
+        repeat(pfp_ref_prefix + ".scan.benchmark", config["iters"])
+    log:
+        scan=pfp_ref_prefix + ".scan.log",
+        parse=pfp_ref_prefix + ".scan_parse.log"
+    shell:
+        "{input.consensus} -f {input.fasta} -x {output.mps} -HRR  -w {params.ma_wsize} -l {params.wsize} {input.vcf} 2>{log.scan} | \
+        {input.pfbwt} -w{params.wsize} -p{params.mod} --non-acgt-to-a --parse-only --print-docs -s -o {params.full_prefix} -m 2>{log.parse}"
+
+
+rule merge_pfp:
+    input:
+        lambda w: expand("{prefix}{ext}", prefix=sample_prefixes(w), ext=parse_exts)
+    output:
+        [pfp_prefix + ext for ext in parse_exts]
+    params:
+        wsize=config['wsize'],
+        mod=config["mod"],
+        prefix=pfp_prefix,
+        sample_prefixes=lambda w: sample_prefixes(w)
+    benchmark:
+        repeat(pfp_prefix + ".merge_pfp.benchmark", config["iters"])
+    log:
+        pfp_prefix + ".merge_pfp.log"
+    shell:
+        MERGEPFP_BIN + " --parse-bwt -p  {params.mod} -w {params.wsize} -s --docs -o {params.prefix} {params.sample_prefixes} 2>{log}"
+
+rule merge_mps:
+    input:
+        mps=lambda w: [s + ".mps" for s in sample_prefixes(w)],
+        merge_mps = MERGEMPS_BIN
+    output:
+        mps=pfp_prefix + ".mps"
+    benchmark:
+        repeat(pfp_prefix +  ".merge_mps.benchmark", config["iters"])
+    log:
+        pfp_prefix + ".merge_mps.log"
+    params:
+        prefixes = lambda w: sample_prefixes(w)
+    shell:
+        "{input.merge_mps} {output.mps} {params.prefixes} 2>{log}"
+
+rule pfbwt:
+    input:
+        **{ext[1:] : pfp_prefix + ext for ext in parse_exts + [".mps"]}
+    output:
+        **{ext[1:] : pfp_prefix + ext for ext in pfbwt_exts}
+    params:
+        wsize=config['wsize'],
+        mod=config["mod"],
+        prefix=pfp_prefix
+    benchmark:
+        repeat(pfp_prefix +  ".pfbwt.benchmark", config["iters"])
+    log:
+        pfbwt=pfp_prefix +  ".pfbwt.log",
+        ma=pfp_prefix + ".ma.log"
+    shell:
+        PFBWT_BIN + " --pfbwt-only --print-docs -o {params.prefix} -p {params.mod} -w {params.wsize} -s -m -r --stdout sa 2>{log.pfbwt} | " +
+        MPSTOMA_BIN + " -m -o {output.ma} {input.mps} - 2>{log.ma}"
+
+rule rbwt_marker_array:
+    input:
+        bwt=pfp_prefix + ".bwt",
+        ma=pfp_prefix + ".ma",
+        rb_build=RBBUILD_BIN
+    output:
+        bwt=rbwt_prefix + ".rbwt",
+        ma=rbwt_prefix + ".mab",
+        ftab=rbwt_prefix + ".ftab"
+    params:
+        in_prefix=pfp_prefix,
+        out_prefix=rbwt_prefix
+    benchmark:
+        repeat(rbwt_prefix +  ".benchmark", config["iters"])
+    log:
+        rbwt_prefix + ".log"
+    shell:
+        "{input.rb_build} --ft --fbb -m -o {params.out_prefix} {params.in_prefix} 2>{log}"
+
+rule copy_docs:
+    input: pfp_prefix + ".docs"
+    output: rbwt_prefix + ".docs"
+    shell: "cp {input} {output}"
+

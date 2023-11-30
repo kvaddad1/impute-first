@@ -1,0 +1,14 @@
+##fileformat=VCFv4.3
+##reference=genome.fa
+##contig=<ID=seq_1, length=30>
+##contig=<ID=seq_2, length=30>
+##contig=<ID=seq_3, length=30>
+##contig=<ID=seq_4, length=30>
+##contig=<ID=seq_5, length=30>
+##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">
+#CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO	FORMAT	sample
+seq_1	5	s1	C	A	.	.	.	GT	1|0
+seq_2	10	s2	C	T	.	.	.	GT	1|0
+seq_3	8	s3	T	G	.	.	.	GT	1|0
+seq_4	19	s4	G	C	.	.	.	GT	1|0
+seq_5	13	s5	A	AG	.	.	.	GT	1|0

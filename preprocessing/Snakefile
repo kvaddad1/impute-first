@@ -1,0 +1,109 @@
+# configfile: "config.yaml"
+include: "rowbowt.snk"
+include: "marker_benchmark.snk"
+
+DIRNAME=config["dirname"]
+ROWBOWT_FNAME = expand(os.path.join(DIRNAME, "pfparse.h{h}.w{w}.mps"),
+                       fa=[config["fa"]],
+                       h=config['hs'],
+                       w=config['ws'])
+FIXED_REF_PANEL = config["ref_panel"].replace(".vcf.gz", ".fixed.vcf.gz")
+ROWBOWT_STATS = expand(os.path.join(DIRNAME, "markers_filtered9.h{h}.w{w}.r_{reads}.c{cov}.all_stats.json"),
+    h=config['hs'],
+    w=config['ws'],
+    reads=config['reads'],
+    cov=config['covs']
+)
+BOWTIE_STATS = expand(os.path.join(DIRNAME, "bowtie2.h1.w0.r_{reads}.c{cov}.all_stats.json"),
+    reads=["real"],
+    cov=config['covs']
+)
+
+rule all:
+    input:
+         expand(os.path.join(DIRNAME, "{prefix}.c{cov}.all_stats.json"),
+             prefix=["markers_filtered9.h34.w19.r_real", "bayestyper.h1.w1.r_real", "bowtie2_bcftools.h1.w0.r_real"],
+             cov=config["covs"]
+         )
+
+rule vcfgz:
+    input:
+        "{vcf}.vcf"
+    output:
+        "{vcf}.vcf.gz"
+    threads: 8
+    shell:
+        "bcftools view --threads {threads} -Oz {input} > {output}"
+
+rule index_vcfgz:
+    input:
+        "{vcf}.vcf.gz"
+    output:
+        "{vcf}.vcf.gz.csi"
+    threads: 8
+    shell:
+        "bcftools index --threads {threads} {input}"
+
+rule panel_for_rbwt:
+    input:
+        ref_panel = config["ref_panel"],
+        samples = config["panel_samples"]
+    output:
+        os.path.join(DIRNAME, "panel.vcf")
+    params:
+        AF="-q {}".format(config["AF"] if "AF" in config else 0)
+    threads: 8
+    shell:
+        "bcftools view --threads {threads} -Oz {params.AF} -S {input.samples} {input.ref_panel}  > {output}"
+
+rule fix_ref_panel:
+    input:
+        ref_panel = "{variants}.vcf.gz"
+    output:
+        ref_panel =  "{variants}.fixed.vcf.gz"
+    run:
+        import pysam
+        in_vcf = pysam.VariantFile(input.ref_panel)
+        out_vcf = pysam.VariantFile(output.ref_panel, "w", header=in_vcf.header)
+        for rec in in_vcf:
+            gt_counts = {}
+            for sample in in_vcf.header.samples:
+                for i in rec.samples[sample]["GT"]:
+                    if i is not None:
+                        if i not in gt_counts:
+                            gt_counts[i] = 0
+                        gt_counts[i] += 1
+            if gt_counts:
+                common_gt = max(gt_counts.items(),key= lambda x: x[1])[0]
+            else:
+                common_gt = 0
+            for sample in in_vcf.header.samples:
+                rec.samples[sample]["GT"] = [i if i is not None else common_gt for i in rec.samples[sample]["GT"] ]
+                rec.samples[sample].phased = True
+            out_vcf.write(rec)
+
+rule build_varcount:
+    input:
+        "varcount/CMakeLists.txt",
+        "varcount/varcount.cpp"
+    output:
+        "varcount/build/varcount"
+    shell: """
+    cd varcount;
+    mkdir build;
+    cd build;
+    cmake ..;
+    cmake --build . --target varcount;
+    """
+
+rule index_bam:
+    input:
+        "{bam}.bam"
+    output:
+        "{bam}.bam.bai"
+    threads: 4
+    benchmark:
+        "{bam}.bam.bai.benchmark"
+    shell:
+        "samtools index -@{threads} {input}"
+

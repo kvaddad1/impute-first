@@ -1,0 +1,604 @@
+import os
+import json
+import re
+from statistics import mean
+import subprocess
+import copy
+DIRNAME=config["dirname"]
+rbwt_prefix = os.path.join(DIRNAME, "rbwt.h{h}.w{w}")
+CHRS = list(map(str,range(1,23)))
+FIXED_REF_PANEL = config["ref_panel"].replace(".vcf.gz", ".fixed.vcf.gz")
+RBMAKERS_BIN=os.path.join(config["rowbowt_bins"], "rb_markers")
+VARCOUNT_BIN="varcount/build/varcount"
+
+wildcard_constraints:
+    reads='\w+',
+    cov='\d+|\d+\.\d+'
+
+def obj_from_params(params):
+    return {
+        "fa": params.fa,
+        "nhaps": int(params.h)*2 if "markers" in params.method else int(params.h),
+        "wsize": int(params.w),
+        "reads": params.reads,
+        "method": params.method,
+        "cov": params.cov,
+    }
+
+def empty_obj(params):
+    return {
+        "fa": None,
+        "gt": None,
+        "nhaps": None,
+        "wsize": None,
+        "reads": None,
+        "method": None,
+        "cov": None,
+    }
+
+rule downsample_real_reads:
+    input:
+        fq="reads/r_real.fq",
+    output:
+        fq="reads/r_real.c{cov}.fq",
+    params:
+        cov = lambda x: float(x.cov)
+    run:
+        if params.cov == float(config['read_cov']):
+            subprocess.run(["cp", input.fq, output.fq], check=True)
+        else:
+            frac = params.cov/config['read_cov']
+            subprocess.run(["seqtk", "sample", input.fq, params.frac], check=True, stdout=open(output[0],'w'))
+
+rule simulate_truth_genome:
+    input:
+        fa=config["fa"],
+        vcf=config["sample_panel"].replace(".vcf.gz", ".fixed.vcf.gz")
+    output:
+        fa=config["fa"] + "." + config["sample"] + ".{hap}.fa"
+    params:
+        sample=config["sample"],
+        hap="{hap}"
+    shell:
+        "bcftools consensus -f {input.fa} -H {params.hap} -s {params.sample} {input.vcf} > {output.fa}"
+
+
+rule simulate_reads:
+    input:
+        fa=config["fa"] + "." + config["sample"] + ".{hap}.fa",
+    output:
+        fq1="reads/r_simulated.hap_{hap}1.fq",
+        fq2="reads/r_simulated.hap_{hap}2.fq",
+        sam="reads/r_simulated.hap_{hap}.sam"
+    params:
+        nreads=900000000,
+        hap="{hap}",
+        prefix="reads/r_simulated.hap_{hap}",
+        read_prefix="hap_{hap}."
+    shell:
+        "art_illumina -d {params.read_prefix} -na -ss HS25 -sam -i {input.fa} -p -l 100 -f 20 -m 250 -s 10 -o {params.prefix}"
+
+rule concat_reads:
+    input:
+        fqs=expand("reads/r_simulated.hap_{hap}{x}.fq", hap=[1,2], x=[1,2])
+    output:
+        fq="reads/r_simulated.fq"
+    shell:
+        "cat {input.fqs} > {output.fq}"
+
+rule rowbowt_markers_unfiltered:
+    input:
+        reads="reads/r_{reads}.c{cov}.fq",
+        docs=rbwt_prefix + ".docs",
+        mab=rbwt_prefix + ".mab",
+        rbwt=rbwt_prefix + ".rbwt",
+        ftab=rbwt_prefix + ".ftab",
+        rb_markers=RBMAKERS_BIN
+    params:
+        args="--fbb -f",
+        max_range=lambda w: (int(w.h) * 2 + 1) * 4,
+        w="{w}",
+        prefix=rbwt_prefix
+    output:
+        os.path.join(DIRNAME, "markers_unfiltered.h{h}.w{w}.r_{reads}.c{cov}.seeds.txt"),
+    log:
+        os.path.join(DIRNAME, "markers_unfiltered.h{h}.w{w}.r_{reads}.c{cov}.seeds.log")
+    benchmark:
+        repeat(os.path.join(DIRNAME, "markers_unfiltered.h{h}.w{w}.r_{reads}.c{cov}.seeds.benchmark"), config["iters"])
+    threads:
+        16
+    shell:
+        """{input.rb_markers} {params.args} -t{threads} --max-range {params.max_range} --wsize {params.w} {params.prefix} {input.reads}  2>{log} | awk '$6 != "." {{print}}' | sort > {output}"""
+
+rule rowbowt_markers_filtered:
+    input:
+        reads="reads/r_{reads}.c{cov}.fq",
+        docs=rbwt_prefix + ".docs",
+        mab=rbwt_prefix + ".mab",
+        rbwt=rbwt_prefix + ".rbwt",
+        ftab=rbwt_prefix + ".ftab",
+        rb_markers=RBMAKERS_BIN
+    params:
+        args="--fbb -f --heuristic --best-strand-only --min-seed-length 80 --clear-conflicting --clear-identical",
+        max_range=lambda w: (int(w.h) * 2 + 1) * 4,
+        w="{w}",
+        prefix=rbwt_prefix
+    output:
+        os.path.join(DIRNAME, "markers_filtered6.h{h}.w{w}.r_{reads}.c{cov}.seeds.txt"),
+    log:
+        os.path.join(DIRNAME, "markers_filtered6.h{h}.w{w}.r_{reads}.c{cov}.seeds.log")
+    benchmark:
+        repeat(os.path.join(DIRNAME, "markers_filtered6.h{h}.w{w}.r_{reads}.c{cov}.seeds.benchmark"), config["iters"])
+    threads:
+        16
+    shell:
+        """{input.rb_markers} {params.args} -t{threads} --max-range {params.max_range} --wsize {params.w} {params.prefix} {input.reads}  2>{log} | awk '$2>5 && $6 != "." {{print}}' | sort > {output}"""
+
+rule rowbowt_markers_filtered2:
+    input:
+        reads="reads/r_{reads}.c{cov}.fq",
+        docs=rbwt_prefix + ".docs",
+        mab=rbwt_prefix + ".mab",
+        rbwt=rbwt_prefix + ".rbwt",
+        ftab=rbwt_prefix + ".ftab",
+        rb_markers=RBMAKERS_BIN
+    params:
+        args="--fbb -f --heuristic --best-strand-only --min-seed-length 95 --clear-conflicting --clear-identical",
+        max_range=lambda w: (int(w.h) * 2 + 1) * 4,
+        w="{w}",
+        prefix=rbwt_prefix
+    output:
+        os.path.join(DIRNAME, "markers_filtered7.h{h}.w{w}.r_{reads}.c{cov}.seeds.txt"),
+    log:
+        os.path.join(DIRNAME, "markers_filtered7.h{h}.w{w}.r_{reads}.c{cov}.seeds.log")
+    benchmark:
+        repeat(os.path.join(DIRNAME, "markers_filtered7.h{h}.w{w}.r_{reads}.c{cov}.seeds.benchmark"), config["iters"])
+    threads:
+        16
+    shell:
+        """{input.rb_markers} {params.args} -t{threads} --max-range {params.max_range} --wsize {params.w} {params.prefix} {input.reads}  2>{log} | awk '$2>5 && $6 != "." {{print}}' | sort > {output}"""
+
+rule rowbowt_markers_filtered3:
+    input:
+        reads="reads/r_{reads}.c{cov}.fq",
+        docs=rbwt_prefix + ".docs",
+        mab=rbwt_prefix + ".mab",
+        rbwt=rbwt_prefix + ".rbwt",
+        ftab=rbwt_prefix + ".ftab",
+        rb_markers=RBMAKERS_BIN
+    params:
+        args="--fbb -f --heuristic --min-seed-length 80 --clear-conflicting --clear-identical",
+        max_range=lambda w: (int(w.h) * 2 + 1) * 4,
+        w="{w}",
+        prefix=rbwt_prefix
+    output:
+        os.path.join(DIRNAME, "markers_filtered8.h{h}.w{w}.r_{reads}.c{cov}.seeds.txt"),
+    log:
+        os.path.join(DIRNAME, "markers_filtered8.h{h}.w{w}.r_{reads}.c{cov}.seeds.log")
+    benchmark:
+        repeat(os.path.join(DIRNAME, "markers_filtered8.h{h}.w{w}.r_{reads}.c{cov}.seeds.benchmark"), config["iters"])
+    threads:
+        16
+    shell:
+        """{input.rb_markers} {params.args} -t{threads} --max-range {params.max_range} --wsize {params.w} {params.prefix} {input.reads}  2>{log} | awk '$2>5 && $6 != "." {{print}}' | sort > {output}"""
+
+rule rowbowt_markers_filtered4:
+    input:
+        reads="reads/r_{reads}.c{cov}.fq",
+        docs=rbwt_prefix + ".docs",
+        mab=rbwt_prefix + ".mab",
+        rbwt=rbwt_prefix + ".rbwt",
+        ftab=rbwt_prefix + ".ftab",
+        rb_markers=RBMAKERS_BIN
+    params:
+        args="--fbb -f --heuristic --min-seed-length 80 --clear-conflicting --clear-identical",
+        max_range=lambda w: int(w.h) * 2,
+        w="{w}",
+        prefix=rbwt_prefix
+    output:
+        os.path.join(DIRNAME, "markers_filtered9.h{h}.w{w}.r_{reads}.c{cov}.seeds.txt"),
+    log:
+        os.path.join(DIRNAME, "markers_filtered9.h{h}.w{w}.r_{reads}.c{cov}.seeds.log")
+    benchmark:
+        repeat(os.path.join(DIRNAME, "markers_filtered9.h{h}.w{w}.r_{reads}.c{cov}.seeds.benchmark"), config["iters"])
+    threads:
+        16
+    shell:
+        """{input.rb_markers} {params.args} -t{threads} --max-range {params.max_range} --wsize {params.w} {params.prefix} {input.reads}  2>{log} | awk '$2>5 && $6 != "." {{print}}' | sort > {output}"""
+
+rule vcf_from_markers:
+    input:
+        vcfgz=FIXED_REF_PANEL,
+        markers=os.path.join(DIRNAME, "markers_{filter}.h{h}.w{w}.r_{reads}.c{cov}.seeds.txt")
+    params:
+        sample=config["sample"]
+    output:
+        vcf=os.path.join(DIRNAME, "markers_{filter}.h{h}.w{w}.r_{reads}.c{cov}.calls.vcf")
+    log:
+        os.path.join(DIRNAME, "markers_{filter}.h{h}.w{w}.r_{reads}.c{cov}.vcf.calls.log")
+    benchmark:
+        repeat( os.path.join(DIRNAME, "markers_{filter}.h{h}.w{w}.r_{reads}.c{cov}.calls.benchmark"), config["iters"])
+    shell:
+        "python vc_from_markers.py --sample_name {params.sample} {input.vcfgz} {input.markers} --fasta_fai hg38.fa.fai 2>{log} > {output.vcf};"
+
+rule bowtie2_index:
+    input:
+        fa=config["fa"]
+    output:
+        "indexes/{fa}.1.bt2".format(fa=config["fa"]),
+        "indexes/{fa}.2.bt2".format(fa=config["fa"]),
+        "indexes/{fa}.3.bt2".format(fa=config["fa"]),
+        "indexes/{fa}.4.bt2".format(fa=config["fa"]),
+        "indexes/{fa}.rev.1.bt2".format(fa=config["fa"]),
+        "indexes/{fa}.rev.2.bt2".format(fa=config["fa"])
+    threads:
+        16
+    shell:
+        "bowtie2-build --threads {threads} {input.fa} indexes/{input.fa}"
+
+rule bowtie2_align:
+    input:
+        reads="reads/r_{reads}.c{cov}.fq",
+        idx1="indexes/{fa}.1.bt2".format( fa=config['fa']),
+        idx2="indexes/{fa}.2.bt2".format( fa=config['fa']),
+        idx3="indexes/{fa}.3.bt2".format( fa=config['fa']),
+        idx4="indexes/{fa}.4.bt2".format( fa=config['fa']),
+        idx5="indexes/{fa}.rev.1.bt2".format( fa=config['fa']),
+        idx6="indexes/{fa}.rev.2.bt2".format( fa=config['fa'])
+    output:
+        tmp_bam=temp(os.path.join(DIRNAME, "bowtie2_tmp.h1.w0.r_{reads}.c{cov}.bam")),
+        bam=os.path.join(DIRNAME, "bowtie2.h1.w0.r_{reads}.c{cov}.bam"),
+    params:
+        fa="indexes/{fa}".format(fa=config['fa'])
+    threads:
+        16
+    benchmark:
+        os.path.join(DIRNAME, "bowtie2.h1.w0.r_{reads}.c{cov}.benchmark"),
+    log:
+        os.path.join(DIRNAME, "bowtie2.h1.w0.r_{reads}.c{cov}.log"),
+    threads:
+        16
+    shell: """
+        bowtie2-align-s -p {threads} -x {params.fa} -U {input.reads} | samtools view -b  > {output.tmp_bam};
+        samtools sort {output.tmp_bam} > {output.bam};
+    """
+
+rule varcount_bowtie:
+    input:
+        bam=os.path.join(DIRNAME, "bowtie2.h1.w0.r_{reads}.c{cov}.bam"),
+        vcf=FIXED_REF_PANEL,
+        varcount=VARCOUNT_BIN
+    output:
+        vcf=os.path.join(DIRNAME, "bowtie2.h1.w0.r_{reads}.c{cov}.calls.vcf")
+    params:
+        sample=config['sample']
+    benchmark:
+        os.path.join(DIRNAME, "bowtie2.h1.w0.r_{reads}.c{cov}.calls.benchmark")
+    log:
+        vcf=os.path.join(DIRNAME, "bowtie2.h1.w0.r_{reads}.c{cov}.calls.log")
+    shell:
+        "{input.varcount} -glikelihood -s{params.sample} -v {input.vcf} {input.bam} 2>{log} | bcftools sort -Ou | bcftools norm -Ou -m+any | bcftools view -Ov -e'FORMAT/AD[0:1]=0 && FORMAT/AD[0:0]=0' > {output.vcf};"
+
+
+rule bowtie2_bcftools:
+    input:
+        fa=config["fa"],
+        bam=os.path.join(DIRNAME, "bowtie2.h1.w0.r_{reads}.c{cov}.bam"),
+    output:
+        vcf=os.path.join(DIRNAME, "bowtie2_bcftools.h1.w0.r_{reads}.c{cov}.calls.vcf")
+    params:
+        sample=config['sample']
+    benchmark:
+        os.path.join(DIRNAME, "bowtie2_bcftools.h1.w0.r_{reads}.c{cov}.calls.benchmark")
+    log:
+        vcf=os.path.join(DIRNAME, "bowtie2_bcftools.h1.w0.r_{reads}.c{cov}.calls.log")
+    shell:
+        "bcftools mpileup -Ou -f {input.fa} {input.bam} | \
+         bcftools call -Ou -mv | \
+         bcftools filter -s LowQual -e '%QUAL<20 || DP>100' > {output.vcf}"
+
+def benchmark_to_obj(fname):
+    lines = open(fname).readlines()
+    header = lines[0].strip().split()
+    if lines is None or header[0] != 's' or header[2] != 'max_rss':
+        sys.stderr.write("benchmark_to_obj: invalid benchmark file\n")
+        exit(1)
+    a = []
+    for line in lines[1:]:
+        d = {}
+        fields = line.strip().split()
+        d['s'] = float(fields[0])
+        d['max_rss'] = float(fields[2]) if fields[2] != "-" else 0
+        a.append(d)
+    return a
+
+def avg_benchmarks(bms):
+    time = mean([o['s'] for o in bms])
+    mem = max([o['max_rss'] for o in bms])
+    final_bm  = {'mean_s': time,
+                 'max_rss': mem
+                }
+    return final_bm
+
+
+def add_avg_benchmarks(bms):
+    final_bm = {'mean_s': 0, 'max_rss': 0}
+    for bm in bms:
+        final_bm['mean_s'] += bm['mean_s']
+        final_bm['max_rss'] = max(final_bm['max_rss'], bm['max_rss'])
+    return final_bm
+
+rule marker_benchmark:
+    wildcard_constraints:
+        align="marker[_\w]*"
+    input:
+        os.path.join(DIRNAME, "{align}.h{h}.w{w}.r_{reads}.c{cov}.seeds.benchmark"),
+    output:
+        os.path.join(DIRNAME, "{align}.h{h}.w{w}.r_{reads}.c{cov}.align.time_mem.json")
+    run:
+        align = add_avg_benchmarks([avg_benchmarks(benchmark_to_obj(f)) for f in input])
+        json.dump(align, open(output[0], 'w'))
+
+
+rule bowtie2_bcftools_align_benchmark:
+    input:
+        os.path.join(DIRNAME, "bowtie2.h{h}.w{w}.r_{reads}.c{cov}.benchmark")
+    output:
+        os.path.join(DIRNAME, "bowtie2_bcftools.h{h}.w{w}.r_{reads}.c{cov}.benchmark")
+    shell:
+        "cp {input} {output}"
+
+rule align_benchmark:
+    wildcard_constraints:
+        align="bowtie2_bcftools|bowtie2|bowtie|bowtie_bcftools"
+    input:
+        os.path.join(DIRNAME, "{align}.h{h}.w{w}.r_{reads}.c{cov}.benchmark"),
+    output:
+        os.path.join(DIRNAME, "{align}.h{h}.w{w}.r_{reads}.c{cov}.align.time_mem.json")
+    run:
+        align = avg_benchmarks(benchmark_to_obj(input[0]))
+        json.dump(align, open(output[0], 'w'))
+
+rule impute_benchmark:
+    input:
+        [os.path.join(DIRNAME, "{align}.h{h}.w{w}.r_{reads}.c{cov}.beagle_impute." + "chr{}.benchmark".format(c)) for c in CHRS]
+    output:
+        os.path.join(DIRNAME, "{align}.h{h}.w{w}.r_{reads}.c{cov}.beagle_impute.time_mem.json")
+    run:
+        d = {}
+        d['mean_s'] = 0
+        d['max_rss'] = 0
+        for fname in input:
+            bm = avg_benchmarks(benchmark_to_obj(fname))
+            d['mean_s'] += bm['mean_s']
+            d['max_rss'] = max(d['max_rss'], bm['max_rss'])
+        json.dump(d, open(output[0], 'w'))
+
+rule calls_benchmark:
+    wildcard_constraints:
+        align = r'(?!bayestyper).*'
+    input:
+        os.path.join(DIRNAME, "{align}.h{h}.w{w}.r_{reads}.c{cov}.calls.benchmark"),
+    output:
+        os.path.join(DIRNAME, "{align}.h{h}.w{w}.r_{reads}.c{cov}.calls.time_mem.json")
+    run:
+        stats = avg_benchmarks(benchmark_to_obj(input[0]))
+        json.dump(stats, open(output[0], "w"))
+
+rule concat_stats:
+    input:
+        align=os.path.join(DIRNAME, "{align}.h{h}.w{w}.r_{reads}.c{cov}.align.time_mem.json"),
+        calls=os.path.join(DIRNAME, "{align}.h{h}.w{w}.r_{reads}.c{cov}.calls.time_mem.json"),
+        calls_acc=os.path.join(DIRNAME, "{align}.h{h}.w{w}.r_{reads}.c{cov}.calls.stats.json"),
+    output:
+        os.path.join(DIRNAME, "{align}.h{h}.w{w}.r_{reads}.c{cov}.all_stats.json")
+    params:
+        h="{h}",
+        w="{w}",
+        reads="{reads}",
+        method="{align}",
+        fa=config["fa"],
+        cov="{cov}"
+    run:
+        objs = []
+        for obj in json.load(open(input.calls_acc, "r")):
+            obj.update(obj_from_params(params))
+            obj.update(json.load(open(input.calls)))
+            objs.append(copy.copy(obj))
+
+        for obj in json.load(open(input.impute_acc, "r")):
+            obj.update(obj_from_params(params))
+            obj.update(json.load(open(input.impute, "r")))
+            objs.append(copy.copy(obj))
+
+        obj = obj_from_params(params)
+        obj["gt"] = "align"
+        obj.update(json.load(open(input.align, "r")))
+        objs.append(copy.copy(obj))
+
+        json.dump(objs, open(output[0], "w"))
+
+### BAYESTYPER ###
+reference = config["fa"]
+reference_dict = config["fa"].replace(".fa", ".dict")
+bayestyper_reference_canon = config["fa"]
+
+bayestyper_path = os.path.join(config["bayestyper_bin_dir"], "bayesTyper")
+bayestyper_tools_path = os.path.join(config["bayestyper_bin_dir"], "bayesTyperTools")
+bayestyper_prefix=os.path.join(DIRNAME, "bayestyper.h1.w1.r_{reads}.c{cov}")
+
+rule sample_tsv:
+    output:
+        samples=bayestyper_prefix + ".sample.tsv"
+    params:
+        out_prefix=bayestyper_prefix
+    run:
+        fp = open(output.samples, "w")
+        fp.write("{}\tF\t{}\n".format(config["sample"],params.out_prefix))
+        fp.close()
+
+rule kmc_count_kmers:
+    input:
+        "reads/r_{reads}.c{cov}.fq"
+    output:
+        kmc_pre=bayestyper_prefix + ".kmc_pre",
+        kmc_suf=bayestyper_prefix + ".kmc_suf",
+        tmp=directory(bayestyper_prefix + ".kmer_counts/tmp")
+    log:
+        bayestyper_prefix + ".kmc.log"
+    benchmark:
+        bayestyper_prefix + ".kmc.benchmark"
+    params:
+        out_prefix=bayestyper_prefix
+    threads: 32
+    shell:
+        "mkdir -p {output.tmp};\n"
+        "{config[kmc_path]} -t{threads} -k55 -ci1 {input} {params.out_prefix} {output.tmp} > {log} 2>&1"
+
+rule bayestyper_make_bloom:
+    input:
+        kmc_pre=bayestyper_prefix + ".kmc_pre",
+        kmc_suf=bayestyper_prefix + ".kmc_suf",
+    output:
+        bloomData=bayestyper_prefix + ".bloomData",
+        bloomMeta=bayestyper_prefix + ".bloomMeta"
+    log:
+        bayestyper_prefix + ".bloom.log"
+    benchmark:
+        bayestyper_prefix + ".bloom.benchmark"
+    params:
+        out_prefix = bayestyper_prefix
+    threads: 32
+    shell:
+        "{bayestyper_tools_path} makeBloom -p{threads} -k {params.out_prefix} > {log} 2>&1"
+
+
+checkpoint bayestyper_cluster:
+    input:
+        bloomData=bayestyper_prefix + ".bloomData",
+        bloomMeta=bayestyper_prefix + ".bloomMeta",
+        variants=FIXED_REF_PANEL,
+        samples=bayestyper_prefix + ".sample.tsv"
+    output:
+        directory(bayestyper_prefix + ".d")
+    params:
+        out_dir=bayestyper_prefix + ".d",
+        out_prefix=os.path.join(bayestyper_prefix + ".d", "bayestyper"),
+    log:
+        bayestyper_prefix + ".cluster.log"
+    benchmark:
+        bayestyper_prefix + ".cluster.benchmark"
+    threads: 16
+    shell:
+        "mkdir {params.out_dir};\n"
+        "{bayestyper_path} cluster -v {input.variants} -s {input.samples} -g {bayestyper_reference_canon} -p {threads} -o {params.out_prefix} > {log} 2>&1"
+
+
+rule bayestyper_genotype:
+    input:
+        kmc_pre=bayestyper_prefix + ".kmc_pre",
+        kmc_suf=bayestyper_prefix + ".kmc_suf",
+        samples=bayestyper_prefix + ".sample.tsv",
+        unit=os.path.join(bayestyper_prefix + ".d", "bayestyper_unit_{unit_id}/variant_clusters.bin")
+    output:
+        genotypes=os.path.join(bayestyper_prefix + ".d", "bayestyper_unit_{unit_id}/bayestyper.vcf"),
+        kmer_coverage_file=os.path.join(bayestyper_prefix + ".d", "bayestyper_unit_{unit_id}/bayestyper_genomic_parameters.txt")
+    log:
+        os.path.join(bayestyper_prefix + ".d", "bayestyper_unit_{unit_id}/genotype.log")
+    benchmark:
+        os.path.join(bayestyper_prefix + ".d", "bayestyper_unit_{unit_id}/genotype.benchmark")
+    params:
+        cluster_data_dir=os.path.join(bayestyper_prefix + ".d", "bayestyper_cluster_data"),
+        out_prefix=os.path.join(bayestyper_prefix + ".d", "bayestyper_unit_{unit_id}/bayestyper")
+    threads: 16
+    shell:
+        "{bayestyper_path} genotype -v {input.unit} -s {input.samples} -c {params.cluster_data_dir} -g {bayestyper_reference_canon}  -p {threads} -o {params.out_prefix} > {log} 2>&1"
+
+
+rule fix_bayestyper_vcf:
+    input:
+        vcf=os.path.join(bayestyper_prefix + ".d", "bayestyper_unit_{unit_id}/bayestyper.vcf"),
+    output:
+        vcf=os.path.join(bayestyper_prefix + ".d", "bayestyper_unit_{unit_id}/bayestyper.filtered.vcf"),
+    shell:
+        """awk 'substr($0,0,1)=="#" || substr($10,0,1) != ":" {{print}}' {input.vcf} | bcftools view -e'FMT/GT="./."' > {output.vcf}"""
+
+
+def bayestyper_units(w):
+    chk_output = checkpoints.bayestyper_cluster.get(**w).output[0]
+    out=expand(os.path.join(bayestyper_prefix + ".d", "bayestyper_unit_{unit_id}/"),
+            reads=w.reads,
+            cov=w.cov,
+            unit_id=glob_wildcards(os.path.join(chk_output, "bayestyper_unit_{unit_id}/variant_clusters.bin")).unit_id)
+    return out
+
+
+rule bcftools_concat_units:
+    input:
+        vcfs= lambda w: [x + "bayestyper.filtered.vcf.gz" for x in bayestyper_units(w)],
+        idxs=lambda w: [x + "bayestyper.filtered.vcf.gz.csi" for x in bayestyper_units(w)]
+    output:
+        calls=bayestyper_prefix +  ".calls.vcf"
+    benchmark:
+        bayestyper_prefix +  ".concat.benchmark"
+    run:
+        sorted_input = sorted(input.vcfs)
+        shell("{config[bcftools_path]} concat -a -Ou {sorted_input} | bcftools sort > {output.calls}", bench_record=bench_record)
+
+
+rule bayestyper_align_benchmark:
+    input:
+        bayestyper_prefix + ".kmc.benchmark",
+        bayestyper_prefix + ".bloom.benchmark",
+        bayestyper_prefix + ".cluster.benchmark"
+    output:
+        bayestyper_prefix + ".align.time_mem.json"
+    run:
+        kmc = avg_benchmarks(benchmark_to_obj(input[0]))
+        bloom = avg_benchmarks(benchmark_to_obj(input[1]))
+        cluster = avg_benchmarks(benchmark_to_obj(input[2]))
+        d = {}
+        d['mean_s'] = 0
+        d['max_rss'] = 0
+        bms = [kmc, bloom, cluster]
+        for bm in bms:
+            d['mean_s'] += bm['mean_s']
+            d['max_rss'] = max(d['max_rss'], bm['max_rss'])
+        json.dump(d, open(output[0], 'w'))
+
+
+rule bayestyper_calls_benchmark:
+    input:
+        genotype=lambda w: [x + "genotype.benchmark" for x in bayestyper_units(w)],
+        concat=bayestyper_prefix + ".concat.benchmark"
+    output:
+        bayestyper_prefix + ".calls.time_mem.json"
+    run:
+        d = {}
+        d['mean_s'] = 0
+        d['max_rss'] = 0
+        for bm in [avg_benchmarks(benchmark_to_obj(i)) for i in input.genotype]:
+            d['mean_s'] = max(d['mean_s'], bm['mean_s'])
+            d['max_rss'] = max(d['max_rss'], bm['max_rss'])
+        bm = avg_benchmarks(benchmark_to_obj(input.concat))
+        d['mean_s'] += bm['mean_s']
+        d['max_rss'] = max(d['max_rss'], bm['max_rss'])
+        json.dump(d, open(output[0], 'w'))
+
+rule aggregate_gt_stats:
+    input:
+        expand(os.path.join(DIRNAME, "{prefix}.c{cov}.all_stats.json"),
+            prefix=["markers_filtered9.h34.w19.r_real", "bayestyper.h1.w1.r_real", "bowtie2_bcftools.h1.w0.r_real"],
+            cov=config["covs"])
+    output:
+        os.path.join(DIRNAME, "all_stats.json")
+    run:
+        big_obj = []
+        out_fp = open(output[0], "w")
+        for f in input:
+            objs = json.load(open(f))
+            for obj in objs:
+                big_obj.append(obj)
+        json.dump(big_obj, out_fp)
+        out_fp.close()
+

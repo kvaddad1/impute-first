@@ -26,6 +26,7 @@ To run the Impute-First alignment framework, the following tools and versions ar
 - [bcftools v1.13](https://samtools.github.io/bcftools/) 
 - [bwa v0.7.17](https://github.com/lh3/bwa/releases)
 - [Bayestyper v1.5](https://github.com/bioinformatics-centre/BayesTyper) 
+- [kmc v3.2.1](https://github.com/refresh-bio/KMC/releases)
 - [rowbowt](https://github.com/alshai/rowbowt)
 - [beagle v5.1](https://faculty.washington.edu/browning/beagle/beagle.html) 
 - [glimpse v1.0.0](https://odelaneau.github.io/GLIMPSE/) 

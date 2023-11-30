@@ -1,0 +1,23 @@
+---
+fa: "hg38.fa"
+AF: 0.01
+hs: [34]
+ws: [19]
+reads: ["real"]
+covs: [0.01, 0.05, 0.1, 0.2, 0.5, 1, 2, 5]
+iters: 1
+ref_panel_full: "hsvc.all.vcf.gz"
+ref_panel: "hsvc.all.less1.vcf.gz"
+sample_panel: "hsvc.all.NA12878.vcf.gz"
+panel_samples: "samples/samples.txt"
+sample: "NA12878"
+dirname: "hsvc.hg38.fa"
+read_cov: 30
+
+pfbwt_bins: "<pfbwt_build path from rowbowt>"
+rowbowt_bins: "<rowbowt build path>"
+bcftools_path: "<bcftools conda env path>"
+kmc_path: "<kmc conda env path>"
+bayestyper_bin_dir: "<bayestyper conda env path>"
+wsize: 10
+mod: 100

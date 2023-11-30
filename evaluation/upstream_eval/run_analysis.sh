@@ -21,4 +21,6 @@ bcftools merge --force-samples -Ou ${benchmark_vcf} ${input_vcf} | \
 bcftools norm -m -any -Ou - | \
 
 # score_matched_vcf is the binary compiled from score_matched_vcf.cpp
-./score_matched_vcf - ${score_threshold} ${output_prefix}
+# <adjust the path for the binary o nbuilding>
+#BPATH=<path to the binary>
+${BPATH}/score_matched_vcf - ${score_threshold} ${output_prefix}
