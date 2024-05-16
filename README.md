@@ -58,6 +58,10 @@ This work was generously supported by NIH Grant R01HG011392. Special thanks to L
 
 ## Citation
 
-For academic use, please cite our work as follows:
+Our work is available as follows:
 
-Vaddadi, N.S.K., Mun, T., Langmead, B. (2023). Minimizing Reference Bias with an Impute-First Approach. Johns Hopkins University.
+[preprint](https://www.biorxiv.org/content/10.1101/2023.11.30.568362v1): Vaddadi, Naga Sai Kavya, Taher Mun, and Ben Langmead. "Minimizing Reference Bias with an Impute-First Approach." bioRxiv (2023): 2023-11.
+
+[abstract](https://dl.acm.org/doi/abs/10.1145/3584371.3613034): Vaddadi, Naga Sai Kavya, Taher Mun, and Benjamin Langmead. "Minimizing Reference Bias: The Impute-First Approach for Personalized Genome Analysis." Proceedings of the 14th ACM International Conference on Bioinformatics, Computational Biology, and Health Informatics. 2023.
+
+[CSHL Genome Informatics Talk 2023](https://meetings.cshl.edu/abstracts.aspx?meet=INFO&year=23), [Slides](https://docs.google.com/presentation/d/1SGVYc76DjTdOU9Cp6WVBcPAf-iFE27wV/edit?usp=sharing&ouid=107230113542653466951&rtpof=true&sd=true): Minimizing reference bias with an impute-first approach.
