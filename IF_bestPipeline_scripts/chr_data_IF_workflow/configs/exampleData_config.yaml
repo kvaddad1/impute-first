@@ -1,0 +1,55 @@
+#Original sample reads coverage 
+read_cov: 30  
+
+#Sample name 
+sample_name: "HG002" 
+
+#Path to fastq file1
+fq1: "exampleData/HG002_chr21_R1.fastq.gz" 
+
+#Path to fastq file2
+fq2: "exampleData/HG002_chr21_R2.fastq.gz"
+
+#Path to reference fasta file 
+fa: "exampleData/GRCh38_no_alt_chr21.fasta" 
+
+#Desired coverage levels for downsampling - provide "NA" ((to use original reads)) if no downsampling is desired 
+covs: ["5"]
+
+#Seed for reproducibility
+seed: 100  
+
+#Aligner choice: bowtie2 or bwa
+aligner: "bowtie2"
+
+#BWA-specific parameters (only used when aligner is bwa: "default" or <Lvalue>)
+bwa_L_flag: "default"
+
+#pre-genotyping alignment mode: paired/unpaired
+align_mode: "unpaired"
+
+#bcfools mode to filter/unfilter the genotyping calls 
+bcftools_mode: "filter"
+#QUAL and DP thresholds for bcftools filtering
+bcftools_filter_QUAL: 20 
+bcftools_filter_DP: 100
+
+#imputation mode: beagle/glimpse1
+impute_mode: "beagle
+
+#Path to reference panel file 
+ref_panel: "exampleData/hsvc.all.less1.chr21.fixed.vcf.gz" 
+
+##Beagle imputation parameters  
+#jar file 
+beagle_jar: "beagle.18May20.d20.jar"
+
+#chromosome-wise genetic map files: beagle format   
+beagle_maps: {
+    "21": "linkage_maps/beagle/beagle_chr21_GRCh38.map",
+}
+
+## glimpse1 imputation parameters
+glimpse_maps: {
+    "21": "linkage_maps/glimpse/glimpse_chr21_GRCh38.map",
+}

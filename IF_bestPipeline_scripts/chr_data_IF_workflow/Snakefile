@@ -1,0 +1,47 @@
+# Validate configurations upfront
+if 'align_mode' not in config:
+    raise ValueError("align_mode must be specified in config")
+if config['align_mode'] not in ['paired', 'unpaired']:
+    raise ValueError("align_mode in config must be one of: paired, unpaired")
+
+if 'aligner' not in config:
+    raise ValueError("aligner must be specified in config")
+if config['aligner'] not in ['bowtie2', 'bwa']:
+    raise ValueError("aligner in config must be one of: bowtie2, bwa")
+
+if 'bcftools_mode' not in config:
+    raise ValueError("bcftools_mode must be specified in config")
+if config['bcftools_mode'] not in ['filter', 'unfilter']:
+    raise ValueError("bcftools_mode in config must be one of: filter, unfilter")
+
+if 'covs' not in config:
+    raise ValueError("covs must be specified in config")
+
+# Process covs to replace "NA" with read_cov
+if 'covs' in config:
+    config['covs'] = [str(config['read_cov']) if x == "NA" else x for x in config['covs']]
+
+if 'impute_mode' not in config:
+    raise ValueError("impute_mode must be specified in config")
+if config['impute_mode'] not in ['beagle', 'glimpse1']:
+    raise ValueError("impute_mode in config must be one of: beagle, glimpse1")
+
+# Include other workflow files
+include: "genotyping.smk"
+
+# Include imputation workflow based on config
+if config['impute_mode'] == "beagle":
+    include: "beagle_imputation.smk"
+elif config["impute_mode"] == "glimpse1":
+    include: "glimpse1_imputation.smk"
+
+rule all:
+    input:
+        # Imputation outputs based on impute_mode and other parameters
+        imputation=expand("imputed_final/{sample_name}.r_real.c{cov}.{aligner}.{align_mode}.{bcftools_mode}.{impute_mode}.vcf.gz",
+               sample_name=config['sample_name'],
+               cov=config['covs'],
+               aligner=config['aligner'],
+               align_mode=config['align_mode'],
+               bcftools_mode=config['bcftools_mode'],
+               impute_mode=config['impute_mode'])
