@@ -42,7 +42,7 @@ ref_panel: "exampleData/hsvc.all.less1.chr21.fixed.vcf.gz"
 
 ##Beagle imputation parameters  
 #jar file 
-beagle_jar: "beagle.18May20.d20.jar"
+#beagle_jar: "beagle.18May20.d20.jar"
 
 #chromosome-wise genetic map files: beagle format   
 beagle_maps: {

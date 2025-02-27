@@ -1,4 +1,11 @@
 # Main rule that defines the final output
+rule beagle_download:
+    input:
+    output:
+        "beagle.18May20.d20.jar"
+    shell:
+        "wget http://faculty.washington.edu/browning/beagle/beagle.18May20.d20.jar"
+
 rule imputed_calls:
     input:
         expand("imputed_final/{sample_name}.r_real.c{cov}.{aligner}.{align_mode}.{bcftools_mode}.beagle.vcf.gz",
@@ -47,7 +54,8 @@ rule beagle_impute:
         vcf="chr_vcfs/{sample_name}.r_real.c{cov}.{aligner}.{align_mode}.{bcftools_mode}.chr{chr}.vcf.gz",
         ref="chr_vcfs/ref_panel.chr{chr}.vcf.gz",
         map=lambda w: config["beagle_maps"][w.chr],
-        jar=config["beagle_jar"]
+        #jar=config["beagle_jar"]
+        jar="beagle.18May20.d20.jar"
     output:
         vcf="imputed/{sample_name}.r_real.c{cov}.{aligner}.{align_mode}.{bcftools_mode}.chr{chr}.imputed.vcf.gz"
     params:
