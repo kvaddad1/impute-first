@@ -1,0 +1,323 @@
+# Snakefile
+
+# Configuration
+configfile: "config.yaml"
+
+# Global variables
+REF = config["reference"]
+CHM13_REF = config["chm13_reference"]
+CHM13_TO_GRCH38_CLFT = config["chm13_to_grch38_clft"]
+THREADS = config["threads"]
+READS_R1 = config["reads_r1"]
+READS_R2 = config["reads_r2"]
+SAMPLE = config["sample"]
+L_VALUE = config["L_value"]
+VCF_NAME = config["vcf_name"]
+VCF = config["vcf"]
+GEN_DIPLOID_REF_SH = config["gen_diploid_ref_script"]
+CHAINTOOLS_PY = config["chaintools_script"]
+LEVIOSAM2_CONTAINER = config["leviosam2_container"]
+DEEPVARIANT_CONTAINER = config["deepvariant_container"]
+HAPLOTYPES = ["1", "2"]
+FLAG_CHM13 = config["chm13"]
+
+# Final output target
+if FLAG_CHM13:
+    rule all:
+        input:
+            expand(
+                "deepvariant_output/{SAMPLE}.{VCF_NAME}.L{L_VALUE}.chm13.L{L_VALUE}.g70.vcf.gz",
+                SAMPLE = SAMPLE,
+                VCF_NAME = VCF_NAME,
+                L_VALUE = L_VALUE,
+            )
+else:
+    rule all:
+        input:
+            expand(
+                "deepvariant_output/{SAMPLE}.{VCF_NAME}.L{L_VALUE}.g70.vcf.gz",
+                SAMPLE = SAMPLE,
+                VCF_NAME = VCF_NAME,
+                L_VALUE = L_VALUE,
+            )
+
+rule personalized_genome_build:
+    input:
+        ref = REF,
+        vcf = VCF
+    output:
+        hap1 = "personalized_genome_build/{SAMPLE}.{VCF_NAME}.Haplotype_1.fa",
+        hap2 = "personalized_genome_build/{SAMPLE}.{VCF_NAME}.Haplotype_2.fa",
+        hap1_chain = "personalized_genome_build/{SAMPLE}.{VCF_NAME}.refToHap1.chain",
+        hap2_chain = "personalized_genome_build/{SAMPLE}.{VCF_NAME}.refToHap2.chain"
+    benchmark:
+        "benchmarks/{SAMPLE}.{VCF_NAME}.personalized_genome_build.txt"
+    log:
+        "logs/{SAMPLE}.{VCF_NAME}.personalized_genome_build.txt"
+    threads: THREADS
+    params:
+        script = GEN_DIPLOID_REF_SH
+    shell:
+        """
+        bash {params.script} {input.ref} {input.vcf} {SAMPLE}.{VCF_NAME} ./personalized_genome_build {threads}
+        """
+
+
+# Index chain files (unchanged)
+rule index_chains:
+    input:
+        hap1_chain = "personalized_genome_build/{SAMPLE}.{VCF_NAME}.refToHap1.chain",
+        hap2_chain = "personalized_genome_build/{SAMPLE}.{VCF_NAME}.refToHap2.chain",
+        ref_fai = REF + ".fai"
+    output:
+        hap1_reverse = "personalized_genome_build/{SAMPLE}.{VCF_NAME}.Hap1toRef.chain",
+        hap2_reverse = "personalized_genome_build/{SAMPLE}.{VCF_NAME}.Hap2toRef.chain",
+        hap1_index = "personalized_genome_build/{SAMPLE}.{VCF_NAME}.Hap1toRef.clft",
+        hap2_index = "personalized_genome_build/{SAMPLE}.{VCF_NAME}.Hap2toRef.clft"
+    benchmark:
+        "benchmarks/{SAMPLE}.{VCF_NAME}.index_chains.txt"
+    log:
+        "logs/{SAMPLE}.{VCF_NAME}.index_chains.txt"
+    singularity:
+        LEVIOSAM2_CONTAINER
+    params:
+        script = CHAINTOOLS_PY,
+        hap1_prefix = "personalized_genome_build/{SAMPLE}.{VCF_NAME}.Hap1toRef",
+        hap2_prefix = "personalized_genome_build/{SAMPLE}.{VCF_NAME}.Hap2toRef"
+    shell:
+        """
+        python3 {params.script} -c {input.hap1_chain} -o {output.hap1_reverse}
+        python3 {params.script} -c {input.hap2_chain} -o {output.hap2_reverse}
+        singularity exec {LEVIOSAM2_CONTAINER} leviosam2 index -c {output.hap1_reverse} -p {params.hap1_prefix} -F {input.ref_fai}
+        singularity exec {LEVIOSAM2_CONTAINER} leviosam2 index -c {output.hap2_reverse} -p {params.hap2_prefix} -F {input.ref_fai}
+        """
+
+#BWA index and alignment for both haplotypes
+rule bwa_align:
+    input:
+        ref = "personalized_genome_build/{SAMPLE}.{VCF_NAME}.Haplotype_{HAPLOTYPES}.fa",
+        r1 = READS_R1,
+        r2 = READS_R2
+    output:
+        bam = "personalized_alignment/{SAMPLE}.{VCF_NAME}.L{L_VALUE}.Hap{HAPLOTYPES}.bam",
+        bai = "personalized_alignment/{SAMPLE}.{VCF_NAME}.L{L_VALUE}.Hap{HAPLOTYPES}.bam.bai"
+    benchmark:
+        "benchmarks/{SAMPLE}.{VCF_NAME}.{L_VALUE}.{HAPLOTYPES}.bwa_align.txt"
+    log:
+        "logs/{SAMPLE}.{VCF_NAME}.{L_VALUE}.{HAPLOTYPES}.bwa_align.txt"
+    threads: THREADS
+    params:
+        L = L_VALUE
+    shell:
+        """
+        bwa index {input.ref}
+        bwa mem -t {threads} -L {params.L} -R '@RG\\tID:chm13\\tSM:{SAMPLE}\\tPL:ILLUMINA\\tDS:novaseq\\tPU:novaseq' \
+            {input.ref} {input.r1} {input.r2} | \
+            samtools sort -@ {threads} -o {output.bam}
+        samtools index {output.bam}
+        """
+
+# Lift BAMs
+rule lift_bams:
+    input:
+        bam = "personalized_alignment/{SAMPLE}.{VCF_NAME}.L{L_VALUE}.Hap{HAPLOTYPES}.bam",
+        clft = "personalized_genome_build/{SAMPLE}.{VCF_NAME}.Hap{HAPLOTYPES}toRef.clft",
+        ref = REF
+    output:
+        lifted = "personalized_alignment/lifted_to_Ref.{SAMPLE}.{VCF_NAME}.L{L_VALUE}.Hap{HAPLOTYPES}.g70.bam"
+    benchmark:
+        "benchmarks/{SAMPLE}.{VCF_NAME}.{L_VALUE}.{HAPLOTYPES}.lift_bams.txt"
+    log:
+        "logs/{SAMPLE}.{VCF_NAME}.{L_VALUE}.{HAPLOTYPES}.lift_bams.txt"
+    threads: THREADS
+    params:
+        output_prefix = "personalized_alignment/lifted_to_Ref.{SAMPLE}.{VCF_NAME}.L{L_VALUE}.Hap{HAPLOTYPES}.g70"
+    singularity:
+        LEVIOSAM2_CONTAINER
+    shell:
+        """
+        singularity exec {LEVIOSAM2_CONTAINER} leviosam2 lift -f {input.ref} -m -G 70 \
+            -C {input.clft} \
+            -a "{input.bam}" \
+            -p {params.output_prefix} -O bam -t {threads}
+        """
+
+# Sort lifted BAMs
+rule sort_lifted_bams:
+    input:
+        lifted = "personalized_alignment/lifted_to_Ref.{SAMPLE}.{VCF_NAME}.L{L_VALUE}.Hap{HAPLOTYPES}.g70.bam"
+    output:
+        rsorted = "personalized_alignment/rsorted.lifted_to_Ref.{SAMPLE}.{VCF_NAME}.L{L_VALUE}.Hap{HAPLOTYPES}.g70.bam"
+    benchmark:
+        "benchmarks/{SAMPLE}.{VCF_NAME}.{L_VALUE}.{HAPLOTYPES}.sort_lifted_bams.txt"
+    log:
+        "logs/{SAMPLE}.{VCF_NAME}.{L_VALUE}.{HAPLOTYPES}.sort_lifted_bams.txt"
+    threads: THREADS
+    shell:
+        "samtools sort -n -@ {threads} {input} -o {output}"
+
+rule align_n_lift_chm13:
+    singularity:
+        LEVIOSAM2_CONTAINER
+    input:
+        r1 = READS_R1,
+        r2 = READS_R2,
+        ref = REF,
+        clft = CHM13_TO_GRCH38_CLFT
+    output:
+        bam = "personalized_alignment/{SAMPLE}.L{L_VALUE}.chm13.bam",
+        rsorted = "personalized_alignment/rsorted.lifted_to_Ref.{SAMPLE}.L{L_VALUE}.chm13.g70.bam"
+    benchmark:
+        "benchmarks/{SAMPLE}.{L_VALUE}.align_n_lift_chm13.txt"
+    log:
+        "logs/{SAMPLE}.{L_VALUE}.align_n_lift_chm13.txt"
+    threads: THREADS
+    params:
+        L = L_VALUE,
+        output_prefix = "personalized_alignment/lifted_to_Ref.{SAMPLE}.L{L_VALUE}.chm13.g70"
+    shell:
+        """
+        bwa mem -t {threads} -L {params.L} -R '@RG\\tID:chm13\\tSM:{SAMPLE}\\tPL:ILLUMINA\\tDS:novaseq\\tPU:novaseq' \
+            {CHM13_REF} {input.r1} {input.r2} | \
+            samtools sort -@ {threads} -o {output.bam}
+        singularity exec {LEVIOSAM2_CONTAINER} leviosam2 lift -f {input.ref} -m -G 70 \
+            -C {input.clft} \
+            -a "{output.bam}" \
+            -p {params.output_prefix} -O bam -t {threads}
+        samtools sort -n -@ {threads} {params.output_prefix}.bam -o {output.rsorted}
+        """
+
+# Reconcile BAMs
+if FLAG_CHM13:
+    rule reconcile:
+        singularity:
+            LEVIOSAM2_CONTAINER
+        input:
+            hap1 = "personalized_alignment/rsorted.lifted_to_Ref.{SAMPLE}.{VCF_NAME}.L{L_VALUE}.Hap1.g70.bam",
+            hap2 = "personalized_alignment/rsorted.lifted_to_Ref.{SAMPLE}.{VCF_NAME}.L{L_VALUE}.Hap2.g70.bam",
+            chm13 = "personalized_alignment/rsorted.lifted_to_Ref.{SAMPLE}.L{L_VALUE}.chm13.g70.bam"
+            #chm13 = "../bwa_Ltag_experiment/rsorted_lifted_chm13_to_grch38.L{L_VALUE}.g70.bam"  # TODO need to fix in the future
+        output:
+            bam = "personalized_alignment/reconciled.{SAMPLE}.{VCF_NAME}.L{L_VALUE}.chm13.L{L_VALUE}.g70.bam"
+        benchmark:
+            "benchmarks/{SAMPLE}.{VCF_NAME}.{L_VALUE}.reconcile_chm13.txt"
+        log:
+            "logs/{SAMPLE}.{VCF_NAME}.{L_VALUE}.reconcile_chm13.txt"
+        shell:
+            """
+            singularity exec {LEVIOSAM2_CONTAINER} leviosam2 reconcile \
+                -s {SAMPLE}_{VCF_NAME}_Hap1:{input.hap1} \
+                -s {SAMPLE}_{VCF_NAME}_Hap2:{input.hap2} \
+                -s chm13_to_grch38:{input.chm13} \
+                -m -o {output.bam}
+            """
+else:
+    rule reconcile:
+        singularity:
+            LEVIOSAM2_CONTAINER
+        input:
+            hap1 = "personalized_alignment/rsorted.lifted_to_Ref.{SAMPLE}.{VCF_NAME}.L{L_VALUE}.Hap1.g70.bam",
+            hap2 = "personalized_alignment/rsorted.lifted_to_Ref.{SAMPLE}.{VCF_NAME}.L{L_VALUE}.Hap2.g70.bam",
+        output:
+            bam = "personalized_alignment/reconciled.{SAMPLE}.{VCF_NAME}.L{L_VALUE}.g70.bam"
+        benchmark:
+            "benchmarks/{SAMPLE}.{VCF_NAME}.{L_VALUE}.reconcile_noChm13.txt"
+        log:
+            "logs/{SAMPLE}.{VCF_NAME}.{L_VALUE}.reconcile_noChm13.txt"
+        shell:
+            """
+            singularity exec {LEVIOSAM2_CONTAINER} leviosam2 reconcile \
+                -s {SAMPLE}_{VCF_NAME}_Hap1:{input.hap1} \
+                -s {SAMPLE}_{VCF_NAME}_Hap2:{input.hap2} \
+                -m -o {output.bam}
+            """
+
+# Final sort and index
+if FLAG_CHM13:
+    rule final_sort:
+        input:
+            bam = "personalized_alignment/reconciled.{SAMPLE}.{VCF_NAME}.L{L_VALUE}.chm13.L{L_VALUE}.g70.bam"
+        output:
+            bam = "personalized_alignment/sorted.reconciled.{SAMPLE}.{VCF_NAME}.L{L_VALUE}.chm13.L{L_VALUE}.g70.bam"
+        benchmark:
+            "benchmarks/{SAMPLE}.{VCF_NAME}.{L_VALUE}.final_sort.txt"
+        log:
+            "logs/{SAMPLE}.{VCF_NAME}.{L_VALUE}.final_sort.txt"
+        threads: THREADS
+        shell:
+            """
+            samtools sort -@ {threads} {input} > {output}
+            samtools index {output}
+            """
+else:
+    rule final_sort:
+        input:
+            bam = "personalized_alignment/reconciled.{SAMPLE}.{VCF_NAME}.L{L_VALUE}.g70.bam"
+        output:
+            bam = "personalized_alignment/sorted.reconciled.{SAMPLE}.{VCF_NAME}.L{L_VALUE}.g70.bam"
+        benchmark:
+            "benchmarks/{SAMPLE}.{VCF_NAME}.{L_VALUE}.final_sort.txt"
+        log:
+            "logs/{SAMPLE}.{VCF_NAME}.{L_VALUE}.final_sort.txt"
+        threads: THREADS
+        shell:
+            """
+            samtools sort -@ {threads} {input} > {output}
+            samtools index {output}
+            """
+
+# DeepVariant
+if FLAG_CHM13:
+    rule deepvariant:
+        input:
+            sorted_bam = "personalized_alignment/sorted.reconciled.{SAMPLE}.{VCF_NAME}.L{L_VALUE}.chm13.L{L_VALUE}.g70.bam",
+            ref = REF
+        output:
+            vcf ="deepvariant_output/{SAMPLE}.{VCF_NAME}.L{L_VALUE}.chm13.L{L_VALUE}.g70.vcf.gz"
+        benchmark:
+            "benchmarks/{SAMPLE}.{VCF_NAME}.{L_VALUE}.deepvariant.txt"
+        log:
+            "logs/{SAMPLE}.{VCF_NAME}.{L_VALUE}.deepvariant.txt"
+        threads: THREADS
+        singularity:
+            DEEPVARIANT_CONTAINER
+        shell:
+            """
+            mkdir -p deepvariant_output
+            singularity exec {DEEPVARIANT_CONTAINER} /opt/deepvariant/bin/run_deepvariant \
+                --model_type WGS \
+                --sample_name {SAMPLE} \
+                --ref={input.ref} \
+                --reads={input.sorted_bam} \
+                --num_shards {threads} \
+                --output_vcf {output.vcf} \
+                --haploid_contigs="chrX,chrY" \
+                --dry_run=false
+            """
+else:
+    rule deepvariant:
+        input:
+            sorted_bam = "personalized_alignment/sorted.reconciled.{SAMPLE}.{VCF_NAME}.L{L_VALUE}.g70.bam",
+            ref = REF
+        output:
+            vcf ="deepvariant_output/{SAMPLE}.{VCF_NAME}.L{L_VALUE}.g70.vcf.gz"
+        benchmark:
+            "benchmarks/{SAMPLE}.{VCF_NAME}.{L_VALUE}.deepvariant.txt"
+        log:
+            "logs/{SAMPLE}.{VCF_NAME}.{L_VALUE}.deepvariant.txt"
+        threads: THREADS
+        singularity:
+            DEEPVARIANT_CONTAINER
+        shell:
+            """
+            mkdir -p deepvariant_output/
+            singularity exec {DEEPVARIANT_CONTAINER} /opt/deepvariant/bin/run_deepvariant \
+                --model_type WGS \
+                --sample_name {SAMPLE} \
+                --ref={input.ref} \
+                --reads={input.sorted_bam} \
+                --num_shards {threads} \
+                --output_vcf {output.vcf} \
+                --haploid_contigs="chrX,chrY" \
+                --dry_run=false
+            """
