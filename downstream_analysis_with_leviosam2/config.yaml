@@ -1,0 +1,19 @@
+# config.yaml
+reference: "./resources/ncbi_dataset/data/GCF_000001405.40/GCF_000001405.40_GRCh38.p14_genomic.fna"
+chm13_reference: "./resources/chm13v2.0.fa"
+chm13_to_grch38_clft: "resources/chm13v2-grch38.clft"
+threads: 48
+reads_r1: "/data/blangme2/reads/HG002.novaseq.pcr-free.30x.R1.fq.gz"
+reads_r2: "/data/blangme2/reads/HG002.novaseq.pcr-free.30x.R2.fq.gz"
+sample: "HG002"
+L_value: 50
+vcf_name: "BBBC20_HGSVC3"
+vcf:      "HG002_BBBC20_HGSVC3.vcf.gz"
+# scripts
+gen_diploid_ref_script: "gen_diploid_ref.sh"
+chaintools_script: "invert.py"
+leviosam2_container: "./resources/leviosam2_v0.5.0.sif"
+deepvariant_container: "./resources/deepvariant_1.6.0.sif"
+
+#flags
+chm13: True
