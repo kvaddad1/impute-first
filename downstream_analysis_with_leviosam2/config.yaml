@@ -1,7 +1,7 @@
 # config.yaml
-reference: "/vast/blangme2/personalized_leviosam/fasta/GCA_000001405.15_GRCh38_no_alt_analysis_set.fna"
-chm13_reference: "/data/blangme2/fasta/chm13_v2.0/bwa/chm13v2.0.fasta"
-chm13_to_grch38_clft: "/data/blangme2/naechyun/levioSAM-experiments/resources/chm13-grch38/chm13v2-grch38.clft"
+reference: "./resources/ncbi_dataset/data/GCF_000001405.40/GCF_000001405.40_GRCh38.p14_genomic.fna"
+chm13_reference: "./resources/chm13v2.0.fa"
+chm13_to_grch38_clft: "resources/chm13v2-grch38.clft"
 threads: 48
 reads_r1: "/data/blangme2/reads/HG002.novaseq.pcr-free.30x.R1.fq.gz"
 reads_r2: "/data/blangme2/reads/HG002.novaseq.pcr-free.30x.R2.fq.gz"
@@ -12,8 +12,8 @@ vcf:      "HG002_BBBC20_HGSVC3.vcf.gz"
 # scripts
 gen_diploid_ref_script: "gen_diploid_ref.sh"
 chaintools_script: "invert.py"
-leviosam2_container: "/vast/blangme2/personalized_leviosam/leviosam2.v0.5.0.sif"
-deepvariant_container: "/vast/blangme2/personalized_leviosam/deepvariant.sif"
+leviosam2_container: "./resources/leviosam2_v0.5.0.sif"
+deepvariant_container: "./resources/deepvariant_1.6.0.sif"
 
 #flags
 chm13: True
