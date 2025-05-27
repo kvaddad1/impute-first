@@ -1,5 +1,5 @@
 #!/bin/bash
-# Script Name: gen_vg_autoindex.sh
+# Script Name: gen_vg_autoindex_VCF.sh
 # This script is used to generate vg graph based index using giraffe pipeline using a VCF file and a reference genome.
 #
 # Usage:
