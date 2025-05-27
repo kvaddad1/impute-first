@@ -1,0 +1,20 @@
+name: IF_upstream_metrics
+channels:
+  - conda-forge 
+  - bioconda
+dependencies:
+  - bcftools>=1.17
+  - cmake>=3.26.0
+  - compilers
+  - zlib
+  - make
+  - autoconf
+  - automake
+  - libtool
+  - curl
+  - bzip2
+  - xz>=5.2       
+  - liblzma       
+  - pkg-config
+  - htslib       
+  - jq

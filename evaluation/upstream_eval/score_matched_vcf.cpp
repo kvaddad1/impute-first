@@ -2,6 +2,7 @@
 #include <deque>
 #include <map>
 #include <cmath>
+#include <string>
 extern "C" {
 #include <htslib/vcf.h>
 }
@@ -266,7 +267,8 @@ int main(int argc, char** argv) {
             exit(1);
         }
         if (ofp) {
-            fprintf(ofp, "%s %d %ld %d/%d %d/%d\n", bcf_seqname(hdr, rec), rec->rid, rec->pos, fix_allele(gt_arr[0]), fix_allele(gt_arr[1]), fix_allele(gt_arr[2]), fix_allele(gt_arr[3]));
+            //fprintf(ofp, "%s %d %ld %d/%d %d/%d\n", bcf_seqname(hdr, rec), rec->rid, rec->pos, fix_allele(gt_arr[0]), fix_allele(gt_arr[1]), fix_allele(gt_arr[2]), fix_allele(gt_arr[3]));
+            fprintf(ofp, "%s %d %lld %d/%d %d/%d\n", bcf_seqname(hdr, rec), rec->rid, rec->pos, fix_allele(gt_arr[0]), fix_allele(gt_arr[1]), fix_allele(gt_arr[2]), fix_allele(gt_arr[3]));
         }
         auto var = Var(rec->rid, rec->pos, gt_arr[0], gt_arr[1], gt_arr[2], gt_arr[3]);
         window.push_back(var);
