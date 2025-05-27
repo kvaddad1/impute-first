@@ -4,7 +4,7 @@
 The Impute-First alignment framework aims to minimize reference bias by creating personalized references. This method enhances variant-calling accuracy, precision, and efficiency in whole-genome DNA sequencing experiments/analysis.
 
 ## Workflow Overview
-![Impute-first alignment workflow](images/Impute-first.png)
+![Impute-first alignment workflow](images/Impute-first_enhanced.png)
 *Figure 1: The Impute-first alignment workflow*
 
 ## Repository Structure
