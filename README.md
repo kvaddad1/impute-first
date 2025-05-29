@@ -1,54 +1,63 @@
 # Impute-First Alignment framework
 
 ## Introduction
-The Impute-First alignment framework aims to minimize reference bias by creating personalized references. This method enhances variant-calling accuracy, precision, and efficiency in whole-genome DNA sequencing experiments/analysis.
+The Impute-First alignment framework aims to minimize reference bias by creating personalized references. This method enhances variant-calling accuracy, precision, and efficiency in whole-genome DNA sequencing analysis.
 
 ## Workflow Overview
-![Impute-first alignment workflow](images/Impute-first_enhanced.png)
+![Impute-first alignment workflow](images/Impute-first_enhanced.png)  
 *Figure 1: The Impute-first alignment workflow*
 
 ## Repository Structure
 
-- `preprocessing/`: Combines read sampling, alignment, and rough genotyping into a snakemake workflow.
-- `imputation/`: Scripts for genotype imputation using Beagle and GLIMPSE.
-- `reference_construction/`: Workflows for constructing diploid and VG graph references, including their indexing.
-- `downstream_analysis/`: Scripts for VG Giraffe mapping, diploid mapping, and GATK HaplotypeCaller analysis.
-- `evaluation/`: Evaluation scripts for assessing the performance of the personalized references and downstream analysis.
+- `upstream_personalization/`: Snakemake workflow to generate personalized diploid references from downsampled reads by performing genotyping and imputation using a reference panel.
 
-Each module contains a `README.md` file with detailed information about the scripts, their function, and instructions for execution.
+- `preprocessing_upstream_pipelines/`: Workflow assessing different genotyping and imputation method combinations for generating personalized references.
 
-## Software Requirements
+- `downstream_analysis_with_giraffe/`: Downstream analysis using Impute-First personalized diploid references of a given sample, built into variation graphs, enabling alignment and lift-over with VG Giraffe (Figure 1, Section B.1) and to perform variant calling.
 
-To run the Impute-First alignment framework, the following tools and versions are required:
+- `downstream_analysis_with_leviosam2/`: Downstream analysis using Impute-First personalized diploid FASTA references of a given sample, aligned with BWA-MEM and lifted with LevioSAM2 to perform variant calling (Figure 1, Section B.2).
 
-- [seqtk](https://github.com/lh3/seqtk) 
-- [Bowtie 2 v2.4.2](http://bowtie-bio.sourceforge.net/bowtie2/index.shtml) 
-- [bcftools v1.13](https://samtools.github.io/bcftools/) 
-- [bwa v0.7.17](https://github.com/lh3/bwa/releases)
-- [Bayestyper v1.5](https://github.com/bioinformatics-centre/BayesTyper) 
-- [kmc v3.2.1](https://github.com/refresh-bio/KMC/releases)
-- [rowbowt](https://github.com/alshai/rowbowt)
-- [beagle v5.1](https://faculty.washington.edu/browning/beagle/beagle.html) 
-- [glimpse v1.0.0](https://odelaneau.github.io/GLIMPSE/) 
-- [vg autoindex and vg giraffe v1.46.0](https://github.com/vgteam/vg/releases) 
-- [GATK v4.2.6.1](https://github.com/broadinstitute/gatk/releases)
-- [rtgtools v3.12.1](https://github.com/RealTimeGenomics/rtg-tools/releases) 
-- [biastools](https://github.com/maojanlin/biastools)
-- [snakemake v6.1.0](https://snakemake.readthedocs.io/en/v6.1.0/getting_started/installation.html)
+- `benchmarking_downstream_workflows/`: Scripts to generate GRCh38-aligned BAMs for benchmarking Impute-First personalized diploid references against linear, pangenome, personalized-pangenome, and ground-truth reference combinations for a given sample. 
 
-Please ensure that all dependencies are installed and properly configured before executing the workflow scripts.
+- `evaluation/`: Scripts for computing evaluation metrics:
+  - Genotyping and Imputation Calls evaluation: Call Accuracy, Window Accuracy.
+  - Downstream analysis evaluation: Allelic Balance at HETs, Variant Call Accuracy.
+
+## Running the Upstream Personalization Workflow
+
+The upstream personalization workflow is implemented using Snakemake and defined in `upstream_personalization/`. It performs read downsampling, genotyping, and imputation to generate diploid personalized reference for a given sample.
+
+All required software dependencies are listed in the Conda environment file `env.yml`. A compatible environment can be created with:
+
+```bash
+conda env create -f upstream_personalization/env.yml
+conda activate genotyping_imputation
+```
+
+To test the workflow, a chromosome 21–based demonstration is provided:
+- `download_exampleData.sh`: Downloads a small test dataset (HG002 chr21 reads and reference files).
+- `download_linkage_maps.sh`: Downloads linkage maps for use with Beagle and GLIMPSE.
+- `configs/exampleData_config.yaml`: Configuration file for running the workflow on the example dataset.
+
+Run the workflow with:
+```bash
+snakemake -j <threads> --configfile configs/exampleData_config.yaml
+```
+
+This config file parameters can be modified to enable using different input files.  
+
+Dependencies and setup instructions for downstream and benchmarking modules are described in their respective subdirectories.
 
 ## Getting Started
 
 1. Clone the repository to your local machine.
 2. Navigate to each module's directory and follow the instructions in the `README.md` files to execute the scripts.
-3. Install all the necessary tools listed in the Software Requirements section.
 
 ## Contact
 
-For inquiries or support related to the Impute-First alignment framework, please reach out to us. 
-- Naga Sai Kavya Vaddadi - kvaddad1@jhu.edu
-- Ben Langmead - langmea@cs.jhu.edu
+For inquiries or support related to the Impute-First alignment framework, please reach out to us.  
+- Naga Sai Kavya Vaddadi - kvaddad1@jhu.edu  
+- Ben Langmead - langmea@cs.jhu.edu  
 
 Johns Hopkins University, Department of Computer Science
 
@@ -56,12 +65,10 @@ Johns Hopkins University, Department of Computer Science
 
 This work was generously supported by NIH Grant R01HG011392. Special thanks to Langmead lab colleagues.
 
-## Citation
-
-Our work is available as follows:
-
+## Available Resources 
 [preprint](https://www.biorxiv.org/content/10.1101/2023.11.30.568362v1): Vaddadi, Naga Sai Kavya, Taher Mun, and Ben Langmead. "Minimizing Reference Bias with an Impute-First Approach." bioRxiv (2023): 2023-11.
 
 [abstract](https://dl.acm.org/doi/abs/10.1145/3584371.3613034): Vaddadi, Naga Sai Kavya, Taher Mun, and Benjamin Langmead. "Minimizing Reference Bias: The Impute-First Approach for Personalized Genome Analysis." Proceedings of the 14th ACM International Conference on Bioinformatics, Computational Biology, and Health Informatics. 2023.
 
 [CSHL Genome Informatics Talk 2023](https://meetings.cshl.edu/abstracts.aspx?meet=INFO&year=23), [Slides](https://docs.google.com/presentation/d/1SGVYc76DjTdOU9Cp6WVBcPAf-iFE27wV/edit?usp=sharing&ouid=107230113542653466951&rtpof=true&sd=true): Minimizing reference bias with an impute-first approach.
+
