@@ -48,6 +48,11 @@ This config file parameters can be modified to enable using different input file
 
 Dependencies and setup instructions for downstream and benchmarking modules are described in their respective subdirectories.
 
+## Running the Downstream Analysis Workflow
+[LevioSAM2 based workflow](/downstream_analysis_with_leviosam2/)
+
+[VG giraffe based workflow](/downstream_analysis_with_giraffe/)
+
 ## Getting Started
 
 1. Clone the repository to your local machine.
