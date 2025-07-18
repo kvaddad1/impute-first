@@ -4,6 +4,7 @@
 - BWA MEM (0.7.17)
 - samtools (1.21)
 - singularity (3.11.4-1.el8)
+- bcftools (1.22)
 
 ## Preparation
 Run 
