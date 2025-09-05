@@ -9,13 +9,13 @@ The Impute-First alignment framework aims to minimize reference bias by creating
 
 ## Repository Structure
 
-- `upstream_personalization/`: Snakemake workflow to generate personalized diploid references from downsampled reads by performing genotyping and imputation using a reference panel.
+- `imputefirst_workflows/upstream_personalization/`: Snakemake workflow to generate personalized diploid references from downsampled reads by performing genotyping and imputation using a reference panel.
 
 - `preprocessing_upstream_pipelines/`: Workflow assessing different genotyping and imputation method combinations for generating personalized references.
 
-- `downstream_analysis_with_giraffe/`: Downstream analysis using Impute-First personalized diploid references of a given sample, built into variation graphs, enabling alignment and lift-over with VG Giraffe (Figure 1, Section B.1) and to perform variant calling.
+- `imputefirst_workflows/downstream_analysis_with_giraffe/`: Downstream analysis using Impute-First personalized diploid references of a given sample, built into variation graphs, enabling alignment and lift-over with VG Giraffe (Figure 1, Section B.1) and to perform variant calling.
 
-- `downstream_analysis_with_leviosam2/`: Downstream analysis using Impute-First personalized diploid FASTA references of a given sample, aligned with BWA-MEM and lifted with LevioSAM2 to perform variant calling (Figure 1, Section B.2).
+- `imputefirst_workflows/downstream_analysis_with_leviosam2/`: Downstream analysis using Impute-First personalized diploid FASTA references of a given sample, aligned with BWA-MEM and lifted with LevioSAM2 to perform variant calling (Figure 1, Section B.2).
 
 - `benchmarking_downstream_workflows/`: Scripts to generate GRCh38-aligned BAMs for benchmarking Impute-First personalized diploid references against linear, pangenome, personalized-pangenome, and ground-truth reference combinations for a given sample. 
 
@@ -30,11 +30,11 @@ The upstream personalization workflow is implemented using Snakemake and defined
 All required software dependencies are listed in the Conda environment file `env.yml`. A compatible environment can be created with:
 
 ```bash
-conda env create -f upstream_personalization/env.yml
+conda env create -f imputefirst_workflows/upstream_personalization/env.yml
 conda activate genotyping_imputation
 ```
 
-To test the workflow, a chromosome 21–based demonstration is provided:
+To test the workflow, a chromosome 21–based demonstration is provided in the `upstream_personalization/` directory. It includes the following files:
 - `download_exampleData.sh`: Downloads a small test dataset (HG002 chr21 reads and reference files).
 - `download_linkage_maps.sh`: Downloads linkage maps for use with Beagle and GLIMPSE.
 - `configs/exampleData_config.yaml`: Configuration file for running the workflow on the example dataset.
@@ -49,9 +49,9 @@ This config file parameters can be modified to enable using different input file
 Dependencies and setup instructions for downstream and benchmarking modules are described in their respective subdirectories.
 
 ## Running the Downstream Analysis Workflow
-[LevioSAM2 based workflow](/downstream_analysis_with_leviosam2/)
+[LevioSAM2 based workflow](imputefirst_workflows/downstream_analysis_with_leviosam2/)
 
-[VG giraffe based workflow](/downstream_analysis_with_giraffe/)
+[VG giraffe based workflow](imputefirst_workflows/downstream_analysis_with_giraffe/)
 
 ## Getting Started
 
